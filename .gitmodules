@@ -1,0 +1,6 @@
+[submodule "arguments"]
+	path = arguments
+	url = git@github.com:ichlubna/arguments.git
+[submodule "build/arguments"]
+	path = build/arguments
+	url = git@github.com:ichlubna/arguments.git
