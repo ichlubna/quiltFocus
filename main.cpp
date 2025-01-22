@@ -31,7 +31,7 @@ void storeGPUImage(cl::CommandQueue queue, cl::Image2D image, std::string path, 
     if (imageFloat)
     {
         std::vector<float> outData;
-        outData.resize(width * height * imageChannelsGPU);
+        outData.resize(width * height);
         if(queue.enqueueReadImage(image, CL_TRUE, cl::array<size_t, 3>{0, 0, 0}, cl::array<size_t, 3>{static_cast<size_t>(width), static_cast<size_t>(height), 1}, 0, 0, outData.data()) != CL_SUCCESS)
             throw std::runtime_error("Cannot download the result");
         stbi_write_hdr(path.c_str(), width, height, 1, outData.data());
@@ -72,7 +72,7 @@ void process(Params params)
     {
         for (const auto& file : std::filesystem::directory_iterator(params.inputPath))
         {
-            unsigned char *imageData = stbi_load(file.path().c_str(), &viewWidth, &viewHeight, &viewChannels, 0);
+            unsigned char *imageData = stbi_load(file.path().c_str(), &viewWidth, &viewHeight, &viewChannels, imageChannelsGPU);
             if (imageData == nullptr)
                 throw std::runtime_error("Failed to load image");
             break;
