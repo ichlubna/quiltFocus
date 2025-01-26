@@ -21,6 +21,8 @@ class Params
     std::string outputPath;
     int cols;
     int rows;
+    bool storeQuilt = false;
+    bool limitFocus = false;
 };
 
 void storeGPUImage(cl::CommandQueue queue, cl::Image2D image, std::string path, bool imageFloat=false)
@@ -120,8 +122,12 @@ void process(Params params)
         }
         if(counter < viewCount-1)
             throw std::runtime_error("The number of input images is lower than the expected quilt size");
-        std::cerr << "Storing the quilt" << std::endl;
-        storeGPUImage(queue, inputImageGPU, std::filesystem::path(params.outputPath) / "quilt.png");
+
+        if(params.storeQuilt)
+        {
+            std::cerr << "Storing the quilt" << std::endl;
+            storeGPUImage(queue, inputImageGPU, std::filesystem::path(params.outputPath) / "quilt.png");
+        }
     }
     else
     {
@@ -134,14 +140,18 @@ void process(Params params)
 	cl::Image2D outputImageGPU(context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, outputImageFormat, viewWidth, viewHeight, 0, nullptr);
 
     std::cerr << "Processing on GPU" << std::endl;
-    auto kernel = cl::compatibility::make_kernel<cl::Image2D&,cl::Image2D&, int, int>(program, "kernelMain"); 
+    auto kernel = cl::compatibility::make_kernel<cl::Image2D&,cl::Image2D&, int, int, cl_float2, cl_float2, cl_float2, cl_float2, int>(program, "kernelMain"); 
     cl_int buildErr = CL_SUCCESS; 
     auto buildInfo = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(&buildErr);
     for (auto &pair : buildInfo)
         if(!pair.second.empty() && !std::all_of(pair.second.begin(),pair.second.end(),isspace))
             std::cerr << pair.second << std::endl;
     cl::EnqueueArgs kernelArgs(queue, cl::NDRange(viewWidth, viewHeight));
-    kernel(kernelArgs, inputImageGPU, outputImageGPU, params.rows, params.cols);
+    cl_float2 viewResolution{static_cast<float>(viewWidth), static_cast<float>(viewHeight)};
+    cl_float2 fullPixel{1.0f/imageWidth, 1.0f/imageHeight};
+    cl_float2 halfPixel{fullPixel.x * 0.5f, fullPixel.y * 0.5f};
+    cl_float2 viewRange{1.0f/params.cols, 1.0f/params.rows};
+    kernel(kernelArgs, inputImageGPU, outputImageGPU, params.rows, params.cols, viewResolution, halfPixel, fullPixel, viewRange, params.limitFocus);
     queue.finish();
 
     std::cerr << "Storing the result" << std::endl;
@@ -153,9 +163,12 @@ int main(int argc, char *argv[])
     std::string helpText =  "This program takes a quilt image and produces the native Looking Glass image. All parameters below need to be specified according to the display model.\n"
                             "--help, -h Prints this help\n"
                             "-i input quilt image or directory - 8-BIT RGBA, all views having the same resolution\n"
-                            "-o output directory - results stored as output.png and quilt.png\n"
+                            "-o output directory - results stored as output.hdr and quilt.png\n"
+                            "-q flag ensures that the quilt is stored as well\n"
+                            "-l flag applies additional limits to the output focus map to highlight the focused areas\n"
                             "-rows number of rows in the quilt\n"
-                            "-cols number of cols in the quilt\n";
+                            "-cols number of cols in the quilt\n"
+                            "usually its ok to use cols=number of views and rows=1, change only if the total resolution of the veiws exceeds one of the maximal texture dimensions since all views are internally stored in one huge texture (quilt referenced above)";
     Arguments args(argc, argv);
     if(args.printHelpIfPresent(helpText))
         return 0;
@@ -170,6 +183,8 @@ int main(int argc, char *argv[])
     params.outputPath = static_cast<std::string>(args["-o"]);
     params.cols = static_cast<int>(args["-cols"]);
     params.rows = static_cast<int>(args["-rows"]);
+    params.limitFocus = args["-l"];
+    params.storeQuilt = args["-q"];
 
     try
     {
