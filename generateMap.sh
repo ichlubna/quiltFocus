@@ -20,11 +20,23 @@ startTime=`date +%s.%N`
 COMBINED=$TEMP/combined
 mkdir $COMBINED
 COUNT=$(ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=nb_read_packets -of csv=p=0 $VIEWS)
+factors()
+{
+    C=$1
+    sqrt_C=$(echo "sqrt($C)" | bc)
+    ROWS=$sqrt_C
+    while [ $((C % ROWS)) -ne 0 ]; do
+        ROWS=$((ROWS - 1))    
+    done
+    COLS=$((C / ROWS))
+}
+factors $COUNT
+
 cd build
 # Combining depth maps with the input images as alpha channel
 ffmpeg -y -i $VIEWS -i $DEPTHS -filter_complex "[1:v]extractplanes=r[alf];[0:v][alf]alphamerge" $COMBINED/%04d.png
 # Computing the focus map
-./quiltFocus -i $COMBINED -o $TEMP -rows $COUNT -cols 1 -l
+./quiltFocus -i $COMBINED -o $TEMP -rows $ROWS -cols $COLS -l
 cd -
 # Applying Kuwahara filter to remove outliers
 #magick $TEMP/output.hdr -morphology dilate octagon:1 $TEMP/output.hdr
